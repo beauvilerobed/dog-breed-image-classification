@@ -10,7 +10,6 @@ import torch.nn.functional as F
 import torchvision.models as models
 import torchvision.transforms as transforms
 
-# https://discuss.pytorch.org/t/torchvision-url-error-when-loading-pretrained-model/2544/6
 from torchvision.models.resnet import model_urls
 
 model_urls['resnet18'] = model_urls['resnet18'].replace('https://', 'http://')
