@@ -115,7 +115,7 @@ def net():
 
     num_features=model.fc.in_features
     model.fc = nn.Sequential(
-                   nn.Linear(num_features, 10))
+                   nn.Linear(num_features, 133))
     return model
 
 def main():
@@ -127,22 +127,37 @@ def main():
     training_transform = transforms.Compose([
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.Resize(224),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+    validating_transform = transforms.Compose([
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.Resize(224),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
     testing_transform = transforms.Compose([
         transforms.Resize(224),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-    trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
-            download=True, transform=training_transform)
+    trainset = torchvision.datasets.ImageFolder(root='./dogImages/train',
+            transform=training_transform)
 
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
             shuffle=True)
 
-    testset = torchvision.datasets.CIFAR10(root='./data', train=False,
-            download=True, transform=testing_transform)
+    validset = torchvision.datasets.ImageFolder(root='./dogImages/valid',
+            transform=validating_transform)
+
+    validloader = torch.utils.data.DataLoader(validset, batch_size=batch_size,
+            shuffle=True)
+
+    testset = torchvision.datasets.ImageFolder(root='./dogImages/test', 
+            transform=testing_transform)
 
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
             shuffle=False)
@@ -163,7 +178,7 @@ def main():
     TODO: Call the train function to start training your model
     Remember that you will need to set up a way to get training data from S3
     '''
-    train(model, trainloader, testloader, criterion, optimizer, device)
+    train(model, trainloader, validloader, criterion, optimizer, device)
     
     '''
     TODO: Test the model to see its accuracy
@@ -175,8 +190,6 @@ def main():
     TODO: Save the trained model
     '''
 
-    buffer = io.BytesIO()
-    torch.save(model, buffer)
 
 if __name__=='__main__':
     main()
