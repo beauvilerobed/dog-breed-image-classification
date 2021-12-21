@@ -1,11 +1,6 @@
 #TODO: Import your dependencies.
-#For instance, below are some dependencies you might need if you are using Pytorch
-import json
-import logging
-import os
 import io
-import sys
-from datetime import time
+#For instance, below are some dependencies you might need if you are using Pytorch
 import numpy as np
 import torch
 import torch.nn as nn
@@ -15,14 +10,12 @@ import torch.nn.functional as F
 import torchvision.models as models
 import torchvision.transforms as transforms
 
-#TODO: Import dependencies for Debugging andd Profiling
-from smdebug import modes
-from smdebug.profiler.utils import str2bool
-from smdebug.pytorch import get_hook
+# https://discuss.pytorch.org/t/torchvision-url-error-when-loading-pretrained-model/2544/6
+from torchvision.models.resnet import model_urls
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-logger.addHandler(logging.StreamHandler(sys.stdout))
+model_urls['resnet18'] = model_urls['resnet18'].replace('https://', 'http://')
+
+#TODO: Import dependencies for Debugging andd Profiling
 
 def test(model, test_loader):
     '''
@@ -41,48 +34,22 @@ def test(model, test_loader):
             correct += pred.eq(target.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
-    logger.info(
+    print(
         "Test set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n".format(
             test_loss, correct, len(test_loader.dataset), 100.0 * correct / len(test_loader.dataset)
         )
     )
 
-def train(model, train_loader, criterion, optimizer, batch_size, epoch):
+def train(model, train_loader, valid_loader, criterion, optimizer, epoch):
     '''
     TODO: Complete this function that can take a model and
           data loaders for training and will get train the model
           Remember to include any debugging/profiling hooks that you might need
     '''
-    hook = get_hook(create_if_not_exists=True)
 
-    transform_valid = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-        ]
-    )
-
-    validset = torchvision.datasets.CIFAR10(
-        root="./data", train=False, download=True, transform=transform_valid
-    )
-
-    valid_loader = torch.utils.data.DataLoader(
-        validset,
-        batch_size=batch_size,
-        shuffle=False
-    )
-
-    epoch_times = []
-
-    if hook:
-        hook.register_loss(criterion)
     # train the model
-
     for i in range(epoch):
         print("START TRAINING")
-        if hook:
-            hook.set_mode(modes.TRAIN)
-        start = time.time()
         model.train()
         train_loss = 0
         for _, (inputs, targets) in enumerate(train_loader):
@@ -94,8 +61,6 @@ def train(model, train_loader, criterion, optimizer, batch_size, epoch):
             train_loss += loss.item()
 
         print("START VALIDATING")
-        if hook:
-            hook.set_mode(modes.EVAL)
         model.eval()
         val_loss = 0
         with torch.no_grad():
@@ -103,17 +68,10 @@ def train(model, train_loader, criterion, optimizer, batch_size, epoch):
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
                 val_loss += loss.item()
-
-        epoch_time = time.time() - start
-        epoch_times.append(epoch_time)
         print(
-            "Epoch %d: train loss %.3f, val loss %.3f, in %.1f sec"
-            % (i, train_loss, val_loss, epoch_time)
+            "Epoch %d: train loss %.3f, val loss %.3f"
+            % (i, train_loss, val_loss)
         )
-
-    # calculate training time after all epoch
-    p50 = np.percentile(epoch_times, 50)
-    return p50
 
 def net():
     '''
@@ -158,8 +116,25 @@ def main():
 
     train_loader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
             shuffle=True)
+    
+    transform_valid = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+        ]
+    )
 
-    model=train(model, train_loader, loss_criterion, optimizer)
+    validset = torchvision.datasets.CIFAR10(
+        root="./data", train=False, download=True, transform=transform_valid
+    )
+
+    valid_loader = torch.utils.data.DataLoader(
+        validset,
+        batch_size=batch_size,
+        shuffle=False
+    )
+
+    model=train(model, train_loader, valid_loader, loss_criterion, optimizer)
 
     '''
     TODO: Test the model to see its accuracy
