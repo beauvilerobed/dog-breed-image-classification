@@ -1,6 +1,6 @@
 #TODO: Import your dependencies.
+import os
 #For instance, below are some dependencies you might need if you are using Pytorch
-import io
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -8,7 +8,6 @@ import torchvision
 from torchvision import models, transforms
 
 #TODO: Import dependencies for Debugging andd Profiling
-
 
 def test(model, test_loader, criterion, device):
     '''
@@ -72,26 +71,24 @@ def train(model, train_loader, validation_loader, criterion, optimizer, device):
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data).item()
                 running_samples+=len(inputs)
-                if running_samples % 2000  == 0:
-                    accuracy = running_corrects/running_samples
-                    print("Images [{}/{} ({:.0f}%)] Loss: {:.2f} Accuracy: {}/{} ({:.2f}%)".format(
-                            running_samples,
-                            len(image_dataset[phase].dataset),
-                            100.0 * (running_samples / len(image_dataset[phase].dataset)),
-                            loss.item(),
-                            running_corrects,
-                            running_samples,
-                            100.0*accuracy,
-                        )
+                accuracy = running_corrects/running_samples
+                print("Images [{}/{} ({:.0f}%)] Loss: {:.2f} Accuracy: {}/{} ({:.2f}%)".format(
+                        running_samples,
+                        len(image_dataset[phase].dataset),
+                        100.0 * (running_samples / len(image_dataset[phase].dataset)),
+                        loss.item(),
+                        running_corrects,
+                        running_samples,
+                        100.0*accuracy,
                     )
+                )
                 
                 #NOTE: Comment lines below to train and test on whole dataset
                 if running_samples>(0.2*len(image_dataset[phase].dataset)):
                     break
 
             epoch_loss = running_loss / running_samples
-            epoch_acc = running_corrects / running_samples
-            
+
             if phase=='valid':
                 if epoch_loss<best_loss:
                     best_loss=epoch_loss
@@ -115,10 +112,13 @@ def net():
 
     num_features=model.fc.in_features
     model.fc = nn.Sequential(
-                   nn.Linear(num_features, 10))
+                   nn.Linear(num_features, 133))
     return model
 
 def main():
+    train_dir = os.environ['SM_CHANNEL_TRAIN']
+    val_dir = os.environ['SM_CHANNEL_VAL']
+    test_dir = os.environ['SM_CHANNEL_TEST']
 
     batch_size=10
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -127,22 +127,37 @@ def main():
     training_transform = transforms.Compose([
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.Resize(224),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+    validating_transform = transforms.Compose([
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.Resize(224),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
     testing_transform = transforms.Compose([
         transforms.Resize(224),
+        transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-    trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
-            download=True, transform=training_transform)
+    trainset = torchvision.datasets.ImageFolder(root=train_dir,
+            transform=training_transform)
 
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
             shuffle=True)
 
-    testset = torchvision.datasets.CIFAR10(root='./data', train=False,
-            download=True, transform=testing_transform)
+    validset = torchvision.datasets.ImageFolder(root=val_dir,
+            transform=validating_transform)
+
+    validloader = torch.utils.data.DataLoader(validset, batch_size=batch_size,
+            shuffle=True)
+
+    testset = torchvision.datasets.ImageFolder(root=test_dir, 
+            transform=testing_transform)
 
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
             shuffle=False)
@@ -163,7 +178,7 @@ def main():
     TODO: Call the train function to start training your model
     Remember that you will need to set up a way to get training data from S3
     '''
-    train(model, trainloader, testloader, criterion, optimizer, device)
+    train(model, trainloader, validloader, criterion, optimizer, device)
     
     '''
     TODO: Test the model to see its accuracy
@@ -174,9 +189,7 @@ def main():
     '''
     TODO: Save the trained model
     '''
-
-    buffer = io.BytesIO()
-    torch.save(model, buffer)
+    torch.save(model.state_dict(), "dogImages_cnn.pt")
 
 if __name__=='__main__':
     main()

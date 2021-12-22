@@ -1,4 +1,6 @@
 #TODO: Import your dependencies.
+import logging
+import sys
 #For instance, below are some dependencies you might need if you are using Pytorch
 import io
 import torch
@@ -8,16 +10,21 @@ import torchvision
 from torchvision import models, transforms
 
 #TODO: Import dependencies for Debugging andd Profiling
+import smdebug.pytorch as smd
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
-def test(model, test_loader, criterion, device):
+def test(model, test_loader, criterion, device, hook):
     '''
     TODO: Complete this function that can take a model and a 
           testing data loader and will get the test accuray/loss of the model
           Remember to include any debugging/profiling hooks that you might need
     '''
-    print("Testing Model on Whole Testing Dataset")
+    logger.info("Testing Model on Whole Testing Dataset")
     model.eval()
+    hook.set_mode(smd.modes.EVAL)
     running_loss=0
     running_corrects=0
     
@@ -32,9 +39,9 @@ def test(model, test_loader, criterion, device):
 
     total_loss = running_loss / len(test_loader.dataset)
     total_acc = running_corrects/ len(test_loader.dataset)
-    print(f"Testing Accuracy: {100*total_acc}, Testing Loss: {total_loss}")
+    logger.info(f"Testing Accuracy: {100*total_acc}, Testing Loss: {total_loss}")
     
-def train(model, train_loader, validation_loader, criterion, optimizer, device):
+def train(model, train_loader, validation_loader, criterion, optimizer, device, hook):
     '''
     TODO: Complete this function that can take a model and
           data loaders for training and will get train the model
@@ -48,11 +55,13 @@ def train(model, train_loader, validation_loader, criterion, optimizer, device):
     
     for epoch in range(epochs):
         for phase in ['train', 'valid']:
-            print(f"Epoch {epoch}, Phase {phase}")
+            logger.info(f"Epoch {epoch}, Phase {phase}")
             if phase=='train':
                 model.train()
+                hook.set_mode(smd.modes.TRAIN)
             else:
                 model.eval()
+                hook.set_mode(smd.modes.EVAL)
             running_loss = 0.0
             running_corrects = 0
             running_samples=0
@@ -74,7 +83,7 @@ def train(model, train_loader, validation_loader, criterion, optimizer, device):
                 running_samples+=len(inputs)
                 if running_samples % 2000  == 0:
                     accuracy = running_corrects/running_samples
-                    print("Images [{}/{} ({:.0f}%)] Loss: {:.2f} Accuracy: {}/{} ({:.2f}%)".format(
+                    logger.info("Images [{}/{} ({:.0f}%)] Loss: {:.2f} Accuracy: {}/{} ({:.2f}%)".format(
                             running_samples,
                             len(image_dataset[phase].dataset),
                             100.0 * (running_samples / len(image_dataset[phase].dataset)),
@@ -122,7 +131,7 @@ def main():
 
     batch_size=10
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(f"Running on Device {device}")
+    logger.info(f"Running on Device {device}")
 
     training_transform = transforms.Compose([
         transforms.RandomHorizontalFlip(p=0.5),
@@ -168,6 +177,9 @@ def main():
     model=net()
     model=model.to(device)
 
+    hook = smd.Hook.create_from_json_file()
+    hook.register_hook(model)
+
     '''
     TODO: Create your loss and optimizer
     '''
@@ -178,18 +190,18 @@ def main():
     TODO: Call the train function to start training your model
     Remember that you will need to set up a way to get training data from S3
     '''
-    train(model, trainloader, validloader, criterion, optimizer, device)
+    train(model, trainloader, validloader, criterion, optimizer, device, hook)
     
     '''
     TODO: Test the model to see its accuracy
     '''
     
-    test(model, testloader, criterion, device)
+    test(model, testloader, criterion, device, hook)
 
     '''
     TODO: Save the trained model
     '''
-
+    torch.save(model.state_dict(), "model.pt")
 
 if __name__=='__main__':
     main()
