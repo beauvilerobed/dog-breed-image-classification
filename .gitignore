@@ -131,3 +131,4 @@ dmypy.json
 #others
 dogImages.zip
 /dogImages
+.DS_Store
