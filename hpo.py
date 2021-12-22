@@ -1,5 +1,7 @@
 #TODO: Import your dependencies.
 import os
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 #For instance, below are some dependencies you might need if you are using Pytorch
 import torch
 import torch.nn as nn
