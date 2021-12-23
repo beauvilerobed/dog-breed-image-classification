@@ -1,28 +1,38 @@
 import argparse
-import time
+import json
+import logging
 import os
-from PIL import ImageFile
-ImageFile.LOAD_TRUNCATED_IMAGES = True
+import sys
 
-import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.utils.data
+import torch.utils.data.distributed
 import torchvision
-import torchvision.models as models
-import torchvision.transforms as transforms
+from torchvision import transforms, models
 
-from smdebug import modes
-from smdebug.profiler.utils import str2bool
-from smdebug.pytorch import get_hook
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-def train(args, net, device):
-    train_dir = os.environ['SM_CHANNEL_TRAIN']
-    val_dir = os.environ['SM_CHANNEL_VAL']
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
-    hook = get_hook(create_if_not_exists=True)
-    batch_size = args.batch_size
-    epoch = args.epoch
+def net():
+    model = models.resnet18(pretrained=True)
+
+    for param in model.parameters():
+        param.requires_grad = False   
+
+    num_features=model.fc.in_features
+    model.fc = nn.Sequential(
+                   nn.Linear(num_features, 133))
+    return model
+
+def _get_train_data_loader(batch_size, training_dir):
+    logger.info("Get train data loader")
     transform_train = transforms.Compose(
         [
             transforms.RandomHorizontalFlip(),
@@ -32,107 +42,131 @@ def train(args, net, device):
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]
     )
-
-    transform_valid = transforms.Compose(
-        [
-            transforms.RandomHorizontalFlip(),
-            transforms.Resize((224,224)),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ]
-    )
-
-    trainset = torchvision.datasets.ImageFolder(root=train_dir,
+    trainset = torchvision.datasets.ImageFolder(root=training_dir,
             transform=transform_train)
 
-    trainloader = torch.utils.data.DataLoader(
-        trainset,
-        batch_size=batch_size,
-        shuffle=True
-    )
-
-    validset = torchvision.datasets.ImageFolder(root=val_dir,
-            transform=transform_valid)
-
-    validloader = torch.utils.data.DataLoader(
-        validset,
-        batch_size=batch_size,
-        shuffle=False
-    )
-
-    loss_optim = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=1.0, momentum=0.9)
-
-    epoch_times = []
-
-    if hook:
-        hook.register_loss(loss_optim)
-    # train the model
-
-    for i in range(epoch):
-        print("START TRAINING")
-        if hook:
-            hook.set_mode(modes.TRAIN)
-        start = time.time()
-        net.train()
-        train_loss = 0
-        for _, (inputs, targets) in enumerate(trainloader):
-            inputs, targets = inputs.to(device), targets.to(device)
-            optimizer.zero_grad()
-            outputs = net(inputs)
-            loss = loss_optim(outputs, targets)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-
-        print("START VALIDATING")
-        if hook:
-            hook.set_mode(modes.EVAL)
-        net.eval()
-        val_loss = 0
-        with torch.no_grad():
-            for _, (inputs, targets) in enumerate(validloader):
-                inputs, targets = inputs.to(device), targets.to(device)
-                outputs = net(inputs)
-                loss = loss_optim(outputs, targets)
-                val_loss += loss.item()
-
-        epoch_time = time.time() - start
-        epoch_times.append(epoch_time)
-        print(
-            "Epoch %d: train loss %.3f, val loss %.3f, in %.1f sec"
-            % (i, train_loss, val_loss, epoch_time)
+    return torch.utils.data.DataLoader(
+            trainset,
+            batch_size=batch_size,
+            shuffle=True
         )
 
-    # calculate training time after all epoch
-    p50 = np.percentile(epoch_times, 50)
-    return p50
+
+def _get_test_data_loader(batch_size, test_dir):
+    logger.info("Get test data loader")
+    testing_transform = transforms.Compose([
+        transforms.Resize(224),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--epoch", type=int, default=1)
-    parser.add_argument("--gpu", type=str2bool, default=True)
-    parser.add_argument("--model", type=str, default="resnet18")
+    testset = torchvision.datasets.ImageFolder(root=test_dir, 
+            transform=testing_transform)
+    return torch.utils.data.DataLoader(
+            testset, 
+            batch_size=batch_size,
+            shuffle=False
+        )
 
-    opt = parser.parse_args()
+def train(args):
+    train_loader = _get_train_data_loader(args.batch_size, args.train_dir)
+    test_loader = _get_test_data_loader(args.test_batch_size, args.test_dir)
 
-    for key, value in vars(opt).items():
-        print(f"{key}:{value}")
-    # create model
-    net = models.__dict__[opt.model](pretrained=True)
-    if opt.gpu == 1:
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
-    net.to(device)
+    model = net()
+    loss_optim = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
-    # Start the training.
-    median_time = train(opt, net, device)
-    print("Median training time per Epoch=%.1f sec" % median_time)
+    for epoch in range(1, args.epochs + 1):
+        model.train()
+        for batch_idx, (data, target) in enumerate(train_loader, 1):
+            optimizer.zero_grad()
+            output = model(data)
+            loss = loss_optim(output, target)
+            loss.backward()
+            optimizer.step()
+            if batch_idx % 100 == 0:
+                logger.info(
+                    "Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}".format(
+                        epoch,
+                        batch_idx * len(data),
+                        len(train_loader.dataset),
+                        100.0 * batch_idx / len(train_loader),
+                        loss.item(),
+                    )
+                )
+        test(model, test_loader)
+    save_model(model, args.model_dir)
+
+
+def test(model, test_loader):
+    print("Testing Model on Whole Testing Dataset")
+    model.eval()
+    running_loss=0
+    running_corrects=0
+
+    loss_optim = nn.CrossEntropyLoss()
+    
+    for inputs, labels in test_loader:
+        outputs=model(inputs)
+        loss=loss_optim(outputs, labels)
+        _, preds = torch.max(outputs, 1)
+        running_loss += loss.item() * inputs.size(0)
+        running_corrects += torch.sum(preds == labels.data).item()
+
+    total_loss = running_loss / len(test_loader.dataset)
+    total_acc = running_corrects/ len(test_loader.dataset)
+    logger.info(f"Testing Accuracy: {100*total_acc}, Testing Loss: {total_loss}")
+
+
+def model_fn(model_dir):
+    model = net()
+    with open(os.path.join(model_dir, "model.pth"), "rb") as f:
+        model.load_state_dict(torch.load(f))
+    return model
+
+def save_model(model, model_dir):
+    logger.info("Saving the model.")
+    path = os.path.join(model_dir, "model.pth")
+    torch.save(model.cpu().state_dict(), path)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+
+    # Data and model checkpoints directories
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=10,
+        metavar="N",
+        help="input batch size for training (default: 10)",
+    )
+    parser.add_argument(
+        "--test_batch_size",
+        type=int,
+        default=10,
+        metavar="N",
+        help="input batch size for testing (default: 10)",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=2,
+        metavar="N",
+        help="number of epochs to train (default: 10)",
+    )
+    parser.add_argument(
+        "--lr", type=float, default=0.01, metavar="LR", help="learning rate (default: 0.01)"
+    )
+    parser.add_argument(
+        "--momentum", type=float, default=0.5, metavar="M", help="SGD momentum (default: 0.5)"
+    )
+
+    # Container environment
+    parser.add_argument("--hosts", type=list, default=json.loads(os.environ["SM_HOSTS"]))
+    parser.add_argument("--current-host", type=str, default=os.environ["SM_CURRENT_HOST"])
+    parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
+    parser.add_argument("--train_dir", type=str, default=os.environ["SM_CHANNEL_TRAIN"])
+    parser.add_argument("--test_dir", type=str, default=os.environ["SM_CHANNEL_TEST"])
+    train(parser.parse_args())
