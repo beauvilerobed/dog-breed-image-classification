@@ -70,6 +70,9 @@ def _get_test_data_loader(batch_size, test_dir):
         )
 
 def train(args):
+    logger.info("Hyperparameters: epoch: {}, lr: {}, batch size: {}, momentum: {}".format(
+                    args.epochs, args.lr, args.batch_size, args.momentum)
+    )
     train_loader = _get_train_data_loader(args.batch_size, args.train_dir)
     test_loader = _get_test_data_loader(args.test_batch_size, args.test_dir)
 

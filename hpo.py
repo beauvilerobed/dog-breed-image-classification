@@ -1,112 +1,20 @@
-#TODO: Import your dependencies.
+import argparse
+import json
 import os
-from PIL import ImageFile
-ImageFile.LOAD_TRUNCATED_IMAGES = True
-#For instance, below are some dependencies you might need if you are using Pytorch
+
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.utils.data
+import torch.utils.data.distributed
 import torchvision
-from torchvision import models, transforms
+from torchvision import transforms, models
 
-#TODO: Import dependencies for Debugging andd Profiling
-
-def test(model, test_loader, criterion, device):
-    '''
-    TODO: Complete this function that can take a model and a 
-          testing data loader and will get the test accuray/loss of the model
-          Remember to include any debugging/profiling hooks that you might need
-    '''
-    print("Testing Model on Whole Testing Dataset")
-    model.eval()
-    running_loss=0
-    running_corrects=0
-    
-    for inputs, labels in test_loader:
-        inputs=inputs.to(device)
-        labels=labels.to(device)
-        outputs=model(inputs)
-        loss=criterion(outputs, labels)
-        _, preds = torch.max(outputs, 1)
-        running_loss += loss.item() * inputs.size(0)
-        running_corrects += torch.sum(preds == labels.data).item()
-
-    total_loss = running_loss / len(test_loader.dataset)
-    total_acc = running_corrects/ len(test_loader.dataset)
-    print(f"Testing Accuracy: {100*total_acc}, Testing Loss: {total_loss}")
-    
-def train(model, train_loader, validation_loader, criterion, optimizer, device):
-    '''
-    TODO: Complete this function that can take a model and
-          data loaders for training and will get train the model
-          Remember to include any debugging/profiling hooks that you might need
-    '''
-
-    epochs=2
-    best_loss=1e6
-    image_dataset={'train':train_loader, 'valid':validation_loader}
-    loss_counter=0
-    
-    for epoch in range(epochs):
-        for phase in ['train', 'valid']:
-            print(f"Epoch {epoch}, Phase {phase}")
-            if phase=='train':
-                model.train()
-            else:
-                model.eval()
-            running_loss = 0.0
-            running_corrects = 0
-            running_samples=0
-
-            for _, (inputs, labels) in enumerate(image_dataset[phase]):
-                inputs=inputs.to(device)
-                labels=labels.to(device)
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-
-                if phase=='train':
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-
-                _, preds = torch.max(outputs, 1)
-                running_loss += loss.item() * inputs.size(0)
-                running_corrects += torch.sum(preds == labels.data).item()
-                running_samples+=len(inputs)
-                accuracy = running_corrects/running_samples
-                print("Images [{}/{} ({:.0f}%)] Loss: {:.2f} Accuracy: {}/{} ({:.2f}%)".format(
-                        running_samples,
-                        len(image_dataset[phase].dataset),
-                        100.0 * (running_samples / len(image_dataset[phase].dataset)),
-                        loss.item(),
-                        running_corrects,
-                        running_samples,
-                        100.0*accuracy,
-                    )
-                )
-                
-                #NOTE: Comment lines below to train and test on whole dataset
-                if running_samples>(0.2*len(image_dataset[phase].dataset)):
-                    break
-
-            epoch_loss = running_loss / running_samples
-
-            if phase=='valid':
-                if epoch_loss<best_loss:
-                    best_loss=epoch_loss
-                else:
-                    loss_counter+=1
-
-        if loss_counter==1:
-            break
-    return model
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 def net():
-    '''
-    TODO: Complete this function that initializes your model
-          Remember to use a pretrained model
-    '''
-    
     model = models.resnet18(pretrained=True)
 
     for param in model.parameters():
@@ -117,81 +25,144 @@ def net():
                    nn.Linear(num_features, 133))
     return model
 
-def main():
-    train_dir = os.environ['SM_CHANNEL_TRAIN']
-    val_dir = os.environ['SM_CHANNEL_VAL']
-    test_dir = os.environ['SM_CHANNEL_TEST']
+def _get_train_data_loader(batch_size, training_dir):
+    transform_train = transforms.Compose(
+        [
+            transforms.RandomHorizontalFlip(),
+            transforms.Resize((224,224)),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ]
+    )
+    trainset = torchvision.datasets.ImageFolder(root=training_dir,
+            transform=transform_train)
 
-    batch_size=10
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(f"Running on Device {device}")
+    return torch.utils.data.DataLoader(
+            trainset,
+            batch_size=batch_size,
+            shuffle=True
+        )
 
-    training_transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.Resize(224),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-    validating_transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.Resize(224),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-
+def _get_test_data_loader(batch_size, test_dir):
+    print("Get test data loader")
     testing_transform = transforms.Compose([
         transforms.Resize(224),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-    trainset = torchvision.datasets.ImageFolder(root=train_dir,
-            transform=training_transform)
-
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-            shuffle=True)
-
-    validset = torchvision.datasets.ImageFolder(root=val_dir,
-            transform=validating_transform)
-
-    validloader = torch.utils.data.DataLoader(validset, batch_size=batch_size,
-            shuffle=True)
 
     testset = torchvision.datasets.ImageFolder(root=test_dir, 
             transform=testing_transform)
+    return torch.utils.data.DataLoader(
+            testset, 
+            batch_size=batch_size,
+            shuffle=False
+        )
 
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-            shuffle=False)
+def train(args):
+    print("Hyperparameters: epoch: {}, lr: {}, batch size: {}, momentum: {}".format(
+                    args.epochs, args.lr, args.batch_size, args.momentum)
+    )
+    train_loader = _get_train_data_loader(args.batch_size, args.train_dir)
+    test_loader = _get_test_data_loader(args.test_batch_size, args.test_dir)
 
-    '''
-    TODO: Initialize a model by calling the net function
-    '''
-    model=net()
-    model=model.to(device)
+    model = net()
+    loss_optim = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
-    '''
-    TODO: Create your loss and optimizer
-    '''
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.fc.parameters(), lr=0.001)
+    for epoch in range(1, args.epochs + 1):
+        model.train()
+        for batch_idx, (data, target) in enumerate(train_loader, 1):
+            optimizer.zero_grad()
+            output = model(data)
+            loss = loss_optim(output, target)
+            loss.backward()
+            optimizer.step()
+            if batch_idx % 100 == 0:
+                print(
+                    "Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}".format(
+                        epoch,
+                        batch_idx * len(data),
+                        len(train_loader.dataset),
+                        100.0 * batch_idx / len(train_loader),
+                        loss.item(),
+                    )
+                )
+        test(model, test_loader)
+    save_model(model, args.model_dir)
+
+
+def test(model, test_loader):
+    print("Testing Model on Whole Testing Dataset")
+    model.eval()
+    running_loss=0
+    running_corrects=0
+
+    loss_optim = nn.CrossEntropyLoss()
     
-    '''
-    TODO: Call the train function to start training your model
-    Remember that you will need to set up a way to get training data from S3
-    '''
-    train(model, trainloader, validloader, criterion, optimizer, device)
-    
-    '''
-    TODO: Test the model to see its accuracy
-    '''
-    
-    test(model, testloader, criterion, device)
+    for inputs, labels in test_loader:
+        outputs=model(inputs)
+        loss=loss_optim(outputs, labels)
+        _, preds = torch.max(outputs, 1)
+        running_loss += loss.item() * inputs.size(0)
+        running_corrects += torch.sum(preds == labels.data).item()
 
-    '''
-    TODO: Save the trained model
-    '''
-    torch.save(model.state_dict(), "dogImages_cnn.pt")
+    total_loss = running_loss / len(test_loader.dataset)
+    total_acc = running_corrects/ len(test_loader.dataset)
+    print(f"Testing Accuracy: {100*total_acc}, Testing Loss: {total_loss}")
 
-if __name__=='__main__':
-    main()
+
+def model_fn(model_dir):
+    model = net()
+    with open(os.path.join(model_dir, "model.pth"), "rb") as f:
+        model.load_state_dict(torch.load(f))
+    return model
+
+def save_model(model, model_dir):
+    print("Saving the model.")
+    path = os.path.join(model_dir, "model.pth")
+    torch.save(model.cpu().state_dict(), path)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+
+    # Data and model checkpoints directories
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=10,
+        metavar="N",
+        help="input batch size for training (default: 10)",
+    )
+    parser.add_argument(
+        "--test_batch_size",
+        type=int,
+        default=10,
+        metavar="N",
+        help="input batch size for testing (default: 10)",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=2,
+        metavar="N",
+        help="number of epochs to train (default: 10)",
+    )
+    parser.add_argument(
+        "--lr", type=float, default=0.01, metavar="LR", help="learning rate (default: 0.01)"
+    )
+    parser.add_argument(
+        "--momentum", type=float, default=0.5, metavar="M", help="SGD momentum (default: 0.5)"
+    )
+
+    # Container environment
+    parser.add_argument("--hosts", type=list, default=json.loads(os.environ["SM_HOSTS"]))
+    parser.add_argument("--current-host", type=str, default=os.environ["SM_CURRENT_HOST"])
+    parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
+    parser.add_argument("--train_dir", type=str, default=os.environ["SM_CHANNEL_TRAIN"])
+    parser.add_argument("--test_dir", type=str, default=os.environ["SM_CHANNEL_TEST"])
+    train(parser.parse_args())
