@@ -21,7 +21,6 @@ The train_model.py script is what will train the model,
 3. hpo.py (for hyperparameter optimization)
 Used for hyperparameter tuning
 4. PDF/HTML of the Profiling Report
-con
 5. README.md
 File that describes the project, explains how to set up and run the code, and describes your results.
 
@@ -33,8 +32,11 @@ What kind of model did you choose for this experiment and why? Give an overview 
 
 Remember that your README should:
 - Include a screenshot of completed training jobs
+
 - Logs metrics during the training process
+
 - Tune at least two hyperparameters
+
 - Retrieve the best best hyperparameters from all your training jobs
 
 ## Debugging and Profiling
