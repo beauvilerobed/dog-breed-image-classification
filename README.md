@@ -91,5 +91,5 @@ for input, label in image:
 ```
 
 **Screenshot** of the deployed active endpoint in Sagemaker.
-![alt text](https://github.com/beauvilerobed/image-classification-AWS-sagemaker/blob/main/Screen%Shot%2021-12-25%at%10.54.25%PM.png?raw=true)
+![alt text](https://github.com/beauvilerobed/image-classification-AWS-sagemaker/blob/main/Screen%20Shot%202021-12-25%20at%2010.54.25%20PM.png?raw=true)
 
