@@ -1,6 +1,8 @@
 import argparse
 import json
+import logging
 import os
+import sys
 
 
 import torch
@@ -14,6 +16,13 @@ from torchvision import transforms, models
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+
+from smdebug import modes
+from smdebug.pytorch import get_hook
+
 def net():
     model = models.resnet18(pretrained=True)
 
@@ -26,6 +35,7 @@ def net():
     return model
 
 def _get_train_data_loader(batch_size, training_dir):
+    logger.info("Get train data loader")
     transform_train = transforms.Compose(
         [
             transforms.RandomHorizontalFlip(),
@@ -46,7 +56,7 @@ def _get_train_data_loader(batch_size, training_dir):
 
 
 def _get_test_data_loader(batch_size, test_dir):
-    print("Get test data loader")
+    logger.info("Get test data loader")
     testing_transform = transforms.Compose([
         transforms.Resize(224),
         transforms.CenterCrop(224),
@@ -63,7 +73,7 @@ def _get_test_data_loader(batch_size, test_dir):
         )
 
 def train(args):
-    print("Hyperparameters: epoch: {}, lr: {}, batch size: {}, momentum: {}".format(
+    logger.info("Hyperparameters: epoch: {}, lr: {}, batch size: {}, momentum: {}".format(
                     args.epochs, args.lr, args.batch_size, args.momentum)
     )
     train_loader = _get_train_data_loader(args.batch_size, args.train_dir)
@@ -72,8 +82,13 @@ def train(args):
     model = net()
     loss_optim = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    hook = get_hook(create_if_not_exists=True)
+    if hook:
+        hook.register_loss(loss_optim)
 
     for epoch in range(1, args.epochs + 1):
+        if hook:
+            hook.set_mode(modes.TRAIN)
         model.train()
         for batch_idx, (data, target) in enumerate(train_loader, 1):
             optimizer.zero_grad()
@@ -82,7 +97,7 @@ def train(args):
             loss.backward()
             optimizer.step()
             if batch_idx % 100 == 0:
-                print(
+                logger.info(
                     "Train Epoch: {} [{}/{} ({:.0f}%)] Loss: {:.6f}".format(
                         epoch,
                         batch_idx * len(data),
@@ -112,7 +127,7 @@ def test(model, test_loader):
 
     total_loss = running_loss / len(test_loader.dataset)
     total_acc = running_corrects/ len(test_loader.dataset)
-    print(f"Testing Accuracy: {100*total_acc}, Testing Loss: {total_loss}")
+    logger.info(f"Testing Accuracy: {100*total_acc}, Testing Loss: {total_loss}")
 
 
 def model_fn(model_dir):
@@ -122,7 +137,7 @@ def model_fn(model_dir):
     return model
 
 def save_model(model, model_dir):
-    print("Saving the model.")
+    logger.info("Saving the model.")
     path = os.path.join(model_dir, "model.pth")
     torch.save(model.cpu().state_dict(), path)
 

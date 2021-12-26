@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
+from smdebug import modes
+from smdebug.pytorch import get_hook
+
 def net():
     model = models.resnet18(pretrained=True)
 
@@ -79,8 +82,13 @@ def train(args):
     model = net()
     loss_optim = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    hook = get_hook(create_if_not_exists=True)
+    if hook:
+        hook.register_loss(loss_optim)
 
     for epoch in range(1, args.epochs + 1):
+        if hook:
+            hook.set_mode(modes.TRAIN)
         model.train()
         for batch_idx, (data, target) in enumerate(train_loader, 1):
             optimizer.zero_grad()

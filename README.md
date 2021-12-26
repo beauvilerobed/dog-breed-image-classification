@@ -21,6 +21,7 @@ The train_model.py script is what will train the model,
 3. hpo.py (for hyperparameter optimization)
 Used for hyperparameter tuning
 4. PDF/HTML of the Profiling Report
+The Debugger ProfilerReport rule invokes all of the monitoring and profiling rules and aggregates the rule analysis into a comprehensive report
 5. README.md
 File that describes the project, explains how to set up and run the code, and describes your results.
 
@@ -39,13 +40,56 @@ Remember that your README should:
 
 - Retrieve the best best hyperparameters from all your training jobs
 
-## Debugging and Profiling
-**TODO**: Give an overview of how you performed model debugging and profiling in Sagemaker
+**Screenshot** 
+![alt text](https://github.com/beauvilerobed/image-classification-AWS-sagemaker/blob/main/Screen%20Shot%202021-12-23%20at%207.08.25%20PM.png?raw=true)
 
-### Results
-**TODO**: What are the results/insights did you get by profiling/debugging your model?
+
+## Debugging and Profiling
+Give an overview of how you performed model debugging and profiling in Sagemaker
+## Profiling
+Add rules you want to create in rules list.
+Create the profilier and debugger configurations.
+Create the estimator to train your model.
+
+## Debugging
+Create Hook
+Set hook to track the loss
+Set hook to train mode
+Set hook to eval mode
+
+### Results and insights
+What are the results/insights did you get by profiling/debugging your model?
+One key insight would be to checks how many data loaders are running in parallel and whether the total number is equal the number
+of available CPU cores. The rule triggers if number is much smaller or larger than the number of available cores.
+If too small, it might lead to low GPU utilization. If too large, it might impact other compute intensive operations on CPU
+
+One result would be The StepOutlier rule measures step durations and checks for outliers. The rule 
+        returns True if duration is larger than stddev times the standard deviation. The rule 
+        also takes the parameter mode, that specifies whether steps from training or validation phase 
+        should be checked.
 
 ## Model Deployment
 **TODO**: Give an overview of the deployed model and instructions on how to query the endpoint with a sample input.
+```
 
-**TODO** Remember to provide a screenshot of the deployed active endpoint in Sagemaker.
+import torch
+import torchvision
+from torchvision import transforms
+
+testing_transform = transforms.Compose([
+        transforms.Resize(224),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+
+testset = torchvision.datasets.ImageFolder(root="sample_image", 
+            transform=testing_transform)
+image = torch.utils.data.DataLoader(testset)
+for input, label in image:
+    print(predictor.predict(input))
+```
+
+**Screenshot** of the deployed active endpoint in Sagemaker.
+![alt text](https://github.com/beauvilerobed/image-classification-AWS-sagemaker/blob/main/Screen%Shot%2021-12-25%at%10.54.25%PM.png?raw=true)
+
