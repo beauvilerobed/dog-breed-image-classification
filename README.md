@@ -69,7 +69,6 @@ One result would be The StepOutlier rule measures step durations and checks for 
         should be checked.
 
 ## Model Deployment
-**TODO**: Give an overview of the deployed model and instructions on how to query the endpoint with a sample input.
 ```
 
 import torch
