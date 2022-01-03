@@ -145,7 +145,6 @@ def save_model(model, model_dir):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    # Data and model checkpoints directories
     parser.add_argument(
         "--batch_size",
         type=int,
@@ -174,7 +173,6 @@ if __name__ == "__main__":
         "--momentum", type=float, default=0.5, metavar="M", help="SGD momentum (default: 0.5)"
     )
 
-    # Container environment
     parser.add_argument("--hosts", type=list, default=json.loads(os.environ["SM_HOSTS"]))
     parser.add_argument("--current-host", type=str, default=os.environ["SM_CURRENT_HOST"])
     parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])

@@ -5,13 +5,13 @@ use Sagemaker profiling, debugger, hyperparameter tuning and other good ML engin
 The choice of dataset is the dog breed classication dataset to classify between different breeds of dogs in images.
 
 ## Project Set Up and Installation
-Enter AWS through the gateway in the course and open SageMaker Studio. 
+Enter AWS and open SageMaker. 
 Download the starter files.
 Download/Make the dataset available. 
 
 ## Dataset
 The provided dataset is the dogbreed classification dataset which can be found in the classroom.
-The project is designed to be dataset independent so if there is a dataset that is more interesting or relevant to your work, you are welcome to use it to complete the project.
+The project is designed to be dataset independent so if there is a dataset that is more interesting or relevant we can use it to complete the project.
 
 ## Files
 1. train_and_deploy.ipynb
@@ -28,26 +28,12 @@ File that describes the project, explains how to set up and run the code, and de
 ### Access
 Upload the data to an S3 bucket through the AWS Gateway so that SageMaker has access to the data. 
 
-## Hyperparameter Tuning
-What kind of model did you choose for this experiment and why? Give an overview of the types of parameters and their ranges used for the hyperparameter search
-
-Remember that your README should:
-- Include a screenshot of completed training jobs
-
-- Logs metrics during the training process
-
-- Tune at least two hyperparameters
-
-- Retrieve the best best hyperparameters from all your training jobs
-
 **Screenshot** 
 ![alt text](https://github.com/beauvilerobed/image-classification-AWS-sagemaker/blob/main/Screen%20Shot%202021-12-23%20at%207.08.25%20PM.png?raw=true)
 
 
-## Debugging and Profiling
-Give an overview of how you performed model debugging and profiling in Sagemaker
 ## Profiling
-Add rules you want to create in rules list.
+Add rules in rules list.
 Create the profilier and debugger configurations.
 Create the estimator to train your model.
 
@@ -58,20 +44,18 @@ Set hook to train mode
 Set hook to eval mode
 
 ### Results and insights
-What are the results/insights did you get by profiling/debugging your model?
+
 One key insight would be to checks how many data loaders are running in parallel and whether the total number is equal the number
 of available CPU cores. The rule triggers if number is much smaller or larger than the number of available cores.
 If too small, it might lead to low GPU utilization. If too large, it might impact other compute intensive operations on CPU
 
 One result would be The StepOutlier rule measures step durations and checks for outliers. The rule 
-        returns True if duration is larger than stddev times the standard deviation. The rule 
-        also takes the parameter mode, that specifies whether steps from training or validation phase 
-        should be checked.
+returns True if duration is larger than stddev times the standard deviation. The rule 
+also takes the parameter mode, that specifies whether steps from training or validation phase 
+should be checked.
 
-## Model Deployment
-**TODO**: Give an overview of the deployed model and instructions on how to query the endpoint with a sample input.
+## Model Querying
 ```
-
 import torch
 import torchvision
 from torchvision import transforms
@@ -90,6 +74,6 @@ for input, label in image:
     print(predictor.predict(input))
 ```
 
-**Screenshot** of the deployed active endpoint in Sagemaker.
+**Screenshot**
 ![alt text](https://github.com/beauvilerobed/image-classification-AWS-sagemaker/blob/main/Screen%Shot%2021-12-25%at%10.54.25%PM.png?raw=true)
 
